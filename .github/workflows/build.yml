@@ -1,0 +1,40 @@
+name: Build NodeJS with Pointer Compression
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target_arch: [aarch64, arm, i686, x86_64]
+      fail-fast: false
+    steps:
+    - name: Checkout termux-packages
+      uses: actions/checkout@v4
+      with:
+        repository: termux/termux-packages
+        path: termux-packages
+        fetch-depth: 1
+
+    - name: Patch nodejs build.sh to enable pointer compression
+      run: |
+        cd termux-packages
+        sed -i 's/local _DEBUG=()/local _DEBUG=()\n\tif [ "$DEST_CPU" = "arm64" ] || [ "$DEST_CPU" = "x64" ]; then\n\t\t_DEBUG+=("--experimental-enable-pointer-compression")\n\tfi/' packages/nodejs/build.sh
+        cat packages/nodejs/build.sh | grep -A 5 "local _DEBUG=()"
+
+    - name: Build NodeJS
+      run: |
+        cd termux-packages
+        ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} -I nodejs
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nodejs-pointer-compression-${{ matrix.target_arch }}
+        path: termux-packages/output/*.deb
